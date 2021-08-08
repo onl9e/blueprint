@@ -1,0 +1,96 @@
+blueprint:
+  name: Start music on Alexa when a tag is scanned
+  description:
+    When a tag is scanned, start the associated music on the selected Alexa media player.
+    You can also run commands with the "universal function"
+    source :- https://community.home-assistant.io/t/start-music-on-alexa-media-player-or-movie-on-plex-when-a-tag-is-scanned/256630/22
+  domain: automation
+  input:
+    time_on:
+      name: Schedule time to play music
+      description:
+        Time schedule to play music
+    alexa_entity_id:
+      name: Alexa player
+      description: The entity ID of the alexa player to use
+      selector:
+        entity:
+          domain: media_player
+    song_name:
+      name: Song name.
+      description: The name of the song to play. The source is specified below.
+        Make sure to select only one source. If its known that a source must be formatted right
+        then its specified in the source you can select.
+    source_amazon:
+      name: Amazon Music
+      description: Music is from Amazon Music. The Song name can be the songname
+      default: false
+      selector:
+        boolean:
+    source_spotify:
+      name: Spotify
+      description:
+        Music is from Spotify. Song name must be songname (e.g. Still Alive),
+        songname and interpret (e.g. Still alive from Red ),
+        "playlist" and playlist name (e.g. Playlist Oldies)
+        or the name of a featured playlist from Spotify (e.g. Missed Hits).
+      selector:
+        boolean:
+    source_apple:
+      name: Apple Music
+      description: Music is from Apple Music.
+      default: false
+      selector:
+        boolean:
+    source_deezer:
+      name: Deezer
+      description: Music is from Deezer.
+      default: false
+      selector:
+        boolean:
+    source_tunein:
+      name: TuneIn
+      description: Music is from TuneIn.
+      default: false
+      selector:
+        boolean:
+    source_custom:
+      name: Universal
+      description:
+        You can put a command in the songname which you would say to your Alexa device e.g.
+        "Play my playlist Oldies on Spotify" (leave out your trigger word from your device).
+        Requires Alexa Media Player version 3.4.0 or newer.
+      default: false
+      selector:
+        boolean:
+
+variables:
+  is_spotify: !input "source_spotify"
+  is_amazon: !input "source_amazon"
+  is_apple: !input "source_apple"
+  is_deezer: !input "source_deezer"
+  is_tunein: !input "source_tunein"
+  is_costum: !input "source_custom"
+
+trigger:
+  - platform: time
+    tag_id: !input time_on
+action:
+  - service: media_player.play_media
+    data_template:
+      entity_id: !input alexa_entity_id
+      media_content_id: !input song_name
+      media_content_type: >
+        {% if is_amazon %}
+          AMAZON_MUSIC
+        {% elif is_spotify %}
+          SPOTIFY
+        {% elif is_apple %}
+          APPLE_MUSIC
+        {% elif is_deezer %}
+          DEEZER
+        {% elif is_tunein %}
+          TUNEIN
+        {% elif is_costum%}
+          custom
+        {% endif%}
