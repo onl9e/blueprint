@@ -1,5 +1,5 @@
 blueprint:
-  name: Start music on Alexa when a tag is scanned
+  name: Play music on Alexa at schedule time
   description:
     When a tag is scanned, start the associated music on the selected Alexa media player.
     You can also run commands with the "universal function"
