@@ -1,0 +1,59 @@
+blueprint:
+  name: Alexa - Play Jellyfin music
+  description: >
+    Receives a Jellyfin item ID and plays it on a selected Jellyfin media
+    player through a Home Assistant webhook.
+  domain: automation
+  source_url: https://example.invalid/alexa-jellyfin-music.yaml
+
+  input:
+    jellyfin_player:
+      name: Jellyfin media player
+      description: The Jellyfin client that should play the requested music.
+      selector:
+        entity:
+          domain: media_player
+
+    webhook_id:
+      name: Webhook ID
+      description: >
+        Use a long, random value. This value becomes part of the webhook URL.
+      default: alexa_jellyfin_music_change_this_random_value
+      selector:
+        text:
+
+mode: queued
+max: 10
+
+triggers:
+  - trigger: webhook
+    webhook_id: !input webhook_id
+    allowed_methods:
+      - POST
+    local_only: false
+
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.json is defined and
+         trigger.json.item_id is defined and
+         trigger.json.item_id | string | length > 0 }}
+
+actions:
+  - action: media_player.play_media
+    target:
+      entity_id: !input jellyfin_player
+    data:
+      media_content_id: "{{ trigger.json.item_id }}"
+      media_content_type: music
+      enqueue: replace
+
+  - delay:
+      seconds: 1
+
+  - action: logbook.log
+    data:
+      name: Alexa Jellyfin
+      message: >
+        Requested "{{ trigger.json.title | default(trigger.json.item_id) }}"
+        on Jellyfin.
