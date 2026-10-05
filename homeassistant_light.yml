@@ -1,24 +1,31 @@
 blueprint:
-  name: Motion Lighting - Variable Day and Night Timing
+  name: Motion Lighting - Day and Night Offsets
   description: >
-    Turns a light on when motion is detected at night.
-    After no motion, the light dims and then turns off.
-    During the day, an already-on light turns off after a separate
-    configurable period without motion.
+    Reusable motion lighting automation.
+
+    At night, motion turns the light on at the selected brightness.
+    After the configured period without motion, the light dims and then
+    turns off.
+
+    During the day, an already-on light turns off after the configured
+    period without motion.
+
+    Sunset and sunrise offsets allow the nighttime period to begin before
+    sunset, after sunset, before sunrise, or after sunrise.
   domain: automation
 
   input:
     motion_sensor:
       name: Motion sensor
-      description: Select the motion sensor for this room.
+      description: Motion sensor for this room.
       selector:
         entity:
           domain: binary_sensor
           device_class: motion
 
     light_target:
-      name: Light
-      description: Select the light or lights controlled by this automation.
+      name: Light or light group
+      description: Light, light group, or multiple lights to control.
       selector:
         target:
           entity:
@@ -26,7 +33,9 @@ blueprint:
 
     motion_confirm_seconds:
       name: Motion confirmation time
-      description: Motion must remain detected for this long before the light turns on.
+      description: >
+        Motion must remain detected for this many seconds before the
+        nighttime light turns on.
       default: 20
       selector:
         number:
@@ -38,7 +47,8 @@ blueprint:
 
     night_no_motion_minutes:
       name: Nighttime no-motion timeout
-      description: Minutes without motion before nighttime dimming begins.
+      description: >
+        Minutes without motion before the nighttime light dims.
       default: 3
       selector:
         number:
@@ -50,7 +60,8 @@ blueprint:
 
     day_no_motion_minutes:
       name: Daytime no-motion timeout
-      description: Minutes without motion before an already-on daytime light turns off.
+      description: >
+        Minutes without motion before an already-on daytime light turns off.
       default: 15
       selector:
         number:
@@ -62,7 +73,7 @@ blueprint:
 
     nighttime_brightness:
       name: Nighttime motion brightness
-      description: Brightness used when motion is detected at night.
+      description: Brightness when motion is detected during the nighttime period.
       default: 100
       selector:
         number:
@@ -73,8 +84,8 @@ blueprint:
           mode: slider
 
     dim_brightness:
-      name: Brightness before turning off
-      description: Brightness used after the nighttime no-motion timeout.
+      name: Dim brightness
+      description: Brightness used before the light turns off at night.
       default: 50
       selector:
         number:
@@ -86,7 +97,7 @@ blueprint:
 
     fade_seconds:
       name: Fade duration
-      description: Number of seconds used to dim or turn off the light.
+      description: Duration used when dimming or turning off the light.
       default: 60
       selector:
         number:
@@ -96,11 +107,33 @@ blueprint:
           unit_of_measurement: seconds
           mode: box
 
+    sunset_offset:
+      name: Sunset offset
+      description: >
+        Positive values start the nighttime period after sunset.
+        Negative values start the nighttime period before sunset.
+        Format examples: 00:30:00 or -00:30:00.
+      default: "00:00:00"
+      selector:
+        text:
+          type: text
+
+    sunrise_offset:
+      name: Sunrise offset
+      description: >
+        Positive values extend the nighttime period after sunrise.
+        Negative values end the nighttime period before sunrise.
+        Format examples: 00:30:00 or -00:30:00.
+      default: "00:00:00"
+      selector:
+        text:
+          type: text
+
 mode: restart
 max_exceeded: silent
 
 triggers:
-  # Nighttime motion trigger
+  # Motion must remain active for the configured period.
   - trigger: state
     entity_id: !input motion_sensor
     from: "off"
@@ -109,7 +142,7 @@ triggers:
       seconds: !input motion_confirm_seconds
     id: nighttime_motion
 
-  # Daytime no-motion trigger
+  # Motion must remain clear for the configured daytime period.
   - trigger: state
     entity_id: !input motion_sensor
     from: "on"
@@ -123,21 +156,28 @@ conditions: []
 actions:
   - choose:
 
-      # Nighttime: motion detected
+      # ---------------------------------------------------------------
+      # NIGHTTIME MOTION
+      # ---------------------------------------------------------------
       - conditions:
           - condition: trigger
             id: nighttime_motion
-          - condition: state
-            entity_id: sun.sun
-            state: "below_horizon"
+
+          # Nighttime starts at sunset plus sunset_offset
+          # and ends at sunrise plus sunrise_offset.
+          - condition: sun
+            after: sunset
+            after_offset: !input sunset_offset
+            before: sunrise
+            before_offset: !input sunrise_offset
+
         sequence:
           - action: light.turn_on
             target: !input light_target
             data:
               brightness_pct: !input nighttime_brightness
 
-          # Wait until the motion sensor has been clear
-          # for the configured nighttime period.
+          # Wait until motion has been clear for the nighttime timeout.
           - wait_for_trigger:
               - trigger: state
                 entity_id: !input motion_sensor
@@ -146,14 +186,14 @@ actions:
                 for:
                   minutes: !input night_no_motion_minutes
 
-          # Dim to the configured intermediate brightness.
+          # Dim the light.
           - action: light.turn_on
             target: !input light_target
             data:
               brightness_pct: !input dim_brightness
               transition: !input fade_seconds
 
-          # Keep the light dim for the configured fade period.
+          # Leave the light dim for the configured duration.
           - delay:
               seconds: !input fade_seconds
 
@@ -163,13 +203,22 @@ actions:
             data:
               transition: !input fade_seconds
 
-      # Daytime: light is already on and motion has stopped.
+      # ---------------------------------------------------------------
+      # DAYTIME NO MOTION
+      # ---------------------------------------------------------------
       - conditions:
           - condition: trigger
             id: daytime_no_motion
-          - condition: state
-            entity_id: sun.sun
-            state: "above_horizon"
+
+          # Daytime is the inverse of the configured nighttime period.
+          - condition: not
+            conditions:
+              - condition: sun
+                after: sunset
+                after_offset: !input sunset_offset
+                before: sunrise
+                before_offset: !input sunrise_offset
+
         sequence:
           - action: light.turn_off
             target: !input light_target
