@@ -1,0 +1,177 @@
+blueprint:
+  name: Motion Lighting - Variable Day and Night Timing
+  description: >
+    Turns a light on when motion is detected at night.
+    After no motion, the light dims and then turns off.
+    During the day, an already-on light turns off after a separate
+    configurable period without motion.
+  domain: automation
+
+  input:
+    motion_sensor:
+      name: Motion sensor
+      description: Select the motion sensor for this room.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: motion
+
+    light_target:
+      name: Light
+      description: Select the light or lights controlled by this automation.
+      selector:
+        target:
+          entity:
+            domain: light
+
+    motion_confirm_seconds:
+      name: Motion confirmation time
+      description: Motion must remain detected for this long before the light turns on.
+      default: 20
+      selector:
+        number:
+          min: 0
+          max: 300
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
+
+    night_no_motion_minutes:
+      name: Nighttime no-motion timeout
+      description: Minutes without motion before nighttime dimming begins.
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 120
+          step: 1
+          unit_of_measurement: minutes
+          mode: box
+
+    day_no_motion_minutes:
+      name: Daytime no-motion timeout
+      description: Minutes without motion before an already-on daytime light turns off.
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 240
+          step: 1
+          unit_of_measurement: minutes
+          mode: box
+
+    nighttime_brightness:
+      name: Nighttime motion brightness
+      description: Brightness used when motion is detected at night.
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    dim_brightness:
+      name: Brightness before turning off
+      description: Brightness used after the nighttime no-motion timeout.
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+
+    fade_seconds:
+      name: Fade duration
+      description: Number of seconds used to dim or turn off the light.
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  # Nighttime motion trigger
+  - trigger: state
+    entity_id: !input motion_sensor
+    from: "off"
+    to: "on"
+    for:
+      seconds: !input motion_confirm_seconds
+    id: nighttime_motion
+
+  # Daytime no-motion trigger
+  - trigger: state
+    entity_id: !input motion_sensor
+    from: "on"
+    to: "off"
+    for:
+      minutes: !input day_no_motion_minutes
+    id: daytime_no_motion
+
+conditions: []
+
+actions:
+  - choose:
+
+      # Nighttime: motion detected
+      - conditions:
+          - condition: trigger
+            id: nighttime_motion
+          - condition: state
+            entity_id: sun.sun
+            state: "below_horizon"
+        sequence:
+          - action: light.turn_on
+            target: !input light_target
+            data:
+              brightness_pct: !input nighttime_brightness
+
+          # Wait until the motion sensor has been clear
+          # for the configured nighttime period.
+          - wait_for_trigger:
+              - trigger: state
+                entity_id: !input motion_sensor
+                from: "on"
+                to: "off"
+                for:
+                  minutes: !input night_no_motion_minutes
+
+          # Dim to the configured intermediate brightness.
+          - action: light.turn_on
+            target: !input light_target
+            data:
+              brightness_pct: !input dim_brightness
+              transition: !input fade_seconds
+
+          # Keep the light dim for the configured fade period.
+          - delay:
+              seconds: !input fade_seconds
+
+          # Turn the light off.
+          - action: light.turn_off
+            target: !input light_target
+            data:
+              transition: !input fade_seconds
+
+      # Daytime: light is already on and motion has stopped.
+      - conditions:
+          - condition: trigger
+            id: daytime_no_motion
+          - condition: state
+            entity_id: sun.sun
+            state: "above_horizon"
+        sequence:
+          - action: light.turn_off
+            target: !input light_target
+            data:
+              transition: !input fade_seconds
