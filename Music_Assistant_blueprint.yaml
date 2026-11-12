@@ -1,0 +1,41 @@
+blueprint:
+  name: Scheduled Music Assistant Tracks
+  description: Play a list of Music Assistant tracks on a selected player at a set time every day.
+  domain: automation
+
+  input:
+    player:
+      name: Music Assistant player
+      selector:
+        entity:
+          domain: media_player
+
+    tracks:
+      name: Tracks to play
+      description: Enter one Music Assistant track URI or exact track name per line, in playback order.
+      selector:
+        text:
+          multiline: true
+
+    play_time:
+      name: Play time
+      selector:
+        time:
+
+variables:
+  tracks_text: !input tracks
+
+triggers:
+  - trigger: time
+    at: !input play_time
+
+actions:
+  - action: music_assistant.play_media
+    target:
+      entity_id: !input player
+    data:
+      media_id: "{{ tracks_text.split('\n') | map('trim') | reject('equalto', '') | list }}"
+      media_type: track
+      enqueue: replace
+
+mode: single
