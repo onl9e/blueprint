@@ -1,6 +1,6 @@
 blueprint:
   name: Scheduled Music Assistant Tracks
-  description: Play a list of Music Assistant tracks on a selected player at a set time every day.
+  description: Play a list of Music Assistant tracks at a set time, with optional volume control.
   domain: automation
 
   input:
@@ -22,14 +22,46 @@ blueprint:
       selector:
         time:
 
+    set_volume_before_playback:
+      name: Set volume before playback
+      description: Set the selected player to the chosen volume before playing.
+      default: true
+      selector:
+        boolean:
+
+    volume_level:
+      name: Playback volume
+      description: Volume from 0.0 (mute) to 1.0 (maximum).
+      default: 0.35
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.05
+          mode: slider
+
 variables:
   tracks_text: !input tracks
+  set_volume_before_playback: !input set_volume_before_playback
 
 triggers:
   - trigger: time
     at: !input play_time
 
 actions:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ set_volume_before_playback }}"
+        sequence:
+          - action: media_player.volume_set
+            target:
+              entity_id: !input player
+            data:
+              volume_level: !input volume_level
+
+          - delay: "00:00:01"
+
   - action: music_assistant.play_media
     target:
       entity_id: !input player
